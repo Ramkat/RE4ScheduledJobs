@@ -1,0 +1,5 @@
+Map to local folder from another server:
+net use S: \\196.22.138.229\SQLBackups ~SeaQui1! /User:RE4-WINSRV2012\SQLBackups
+
+Remove the mapped folder:
+net use s: /delete

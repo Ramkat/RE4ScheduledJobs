@@ -1,0 +1,163 @@
+Attribute VB_Name = "modCDO"
+Option Compare Database
+Option Explicit
+
+Private Const cdoSendUsingPort = 2
+Private Const cdoBasic = 1
+Private Const cdoNTLM = 2
+
+' The docmentation of all these settings is available at
+' https://msdn.microsoft.com/en-us/library/ms872853.aspx
+
+Private Const cdoSendUsingMethod = "http://schemas.microsoft.com/cdo/configuration/sendusing"
+Private Const cdoSMTPServer = "http://schemas.microsoft.com/cdo/configuration/smtpserver"
+Private Const cdoSMTPServerPort = "http://schemas.microsoft.com/cdo/configuration/smtpserverport"
+Private Const cdoSMTPUseSSL = "http://schemas.microsoft.com/cdo/configuration/smtpusessl"
+Private Const cdoSMTPAuthenticate = "http://schemas.microsoft.com/cdo/configuration/smtpauthenticate"
+Private Const cdoSendUserName = "http://schemas.microsoft.com/cdo/configuration/sendusername"
+Private Const cdoSendPassword = "http://schemas.microsoft.com/cdo/configuration/sendpassword"
+    
+
+Public Sub SendSimpleCDOMail()
+
+    Dim mail    As Object           ' CDO.MESSAGE
+    Dim config  As Object           ' CDO.Configuration
+    
+    Set mail = CreateObject("CDO.Message")
+    Set config = CreateObject("CDO.Configuration")
+    
+    config.Fields(cdoSendUsingMethod).Value = cdoSendUsingPort
+    config.Fields(cdoSMTPServer).Value = "mail.mycompany.invalid"
+    config.Fields(cdoSMTPServerPort).Value = 25
+    config.Fields.Update
+    
+    Set mail.Configuration = config
+    
+    With mail
+        .To = "someone@somewhere.invalid"
+        .From = "me@mycompany.invalid"
+        .Subject = "First email with CDO"
+        .TextBody = "This is the body of the first plain text email with CDO."
+        
+        .AddAttachment "C:\path\to\a\file.dat"
+        
+        .Send
+    End With
+    
+    Set config = Nothing
+    Set mail = Nothing
+    
+End Sub
+
+Public Sub SendSimpleCDOMailWithBasicAuthentication()
+
+    Dim mail    As Object           ' CDO.MESSAGE
+    Dim config  As Object           ' CDO.Configuration
+    
+    Set mail = CreateObject("CDO.Message")
+    Set config = CreateObject("CDO.Configuration")
+    
+    config.Fields(cdoSendUsingMethod).Value = cdoSendUsingPort
+    config.Fields(cdoSMTPServer).Value = "mail.mycompany.invalid"
+    config.Fields(cdoSMTPServerPort).Value = 25
+    
+    config.Fields(cdoSMTPAuthenticate).Value = cdoBasic
+    config.Fields(cdoSendUserName).Value = "youUserName"
+    config.Fields(cdoSendPassword).Value = "yourPassword"
+
+    config.Fields.Update
+    
+    Set mail.Configuration = config
+    
+    With mail
+        .To = "someone@somewhere.invalid"
+        .From = "me@mycompany.invalid"
+        .Subject = "First email with CDO"
+        .TextBody = "This is the body of the first plain text email with CDO."
+        
+        .AddAttachment "C:\path\to\a\file.dat"
+        
+        .Send
+    End With
+    
+    Set config = Nothing
+    Set mail = Nothing
+    
+End Sub
+
+Public Sub SendSimpleCDOMailWithAuthenticationAndEncryption()
+
+    Dim mail    As Object           ' CDO.MESSAGE
+    Dim config  As Object           ' CDO.Configuration
+    
+    Set mail = CreateObject("CDO.Message")
+    Set config = CreateObject("CDO.Configuration")
+    
+    config.Fields(cdoSendUsingMethod).Value = cdoSendUsingPort
+    config.Fields(cdoSMTPServer).Value = "mail.mycompany.invalid"
+   
+    config.Fields(cdoSMTPServerPort).Value = 465  ' implicit SSL - Does not work with Explicit SSL (StartTLS) usually on Port 587
+    config.Fields(cdoSMTPUseSSL).Value = "true"
+    
+    config.Fields(cdoSMTPAuthenticate).Value = cdoBasic
+    config.Fields(cdoSendUserName).Value = "youUserName"
+    config.Fields(cdoSendPassword).Value = "yourPassword"
+
+    config.Fields.Update
+    
+    Set mail.Configuration = config
+    
+    With mail
+        .To = "someone@somewhere.invalid"
+        .From = "me@mycompany.invalid"
+        .Subject = "First email with CDO"
+        .TextBody = "This is the body of the first plain text email with CDO."
+        
+        .AddAttachment "C:\path\to\a\file.dat"
+        
+        .Send
+    End With
+    
+    Set config = Nothing
+    Set mail = Nothing
+    
+End Sub
+
+Public Sub SendSimpleCDOMailWithWindowsAuthentication()
+
+    Dim mail    As Object           ' CDO.MESSAGE
+    Dim config  As Object           ' CDO.Configuration
+    
+    Set mail = CreateObject("CDO.Message")
+    Set config = CreateObject("CDO.Configuration")
+    
+    config.Fields(cdoSendUsingMethod).Value = cdoSendUsingPort
+    config.Fields(cdoSMTPServer).Value = "mail.mycompany.invalid"
+    config.Fields(cdoSMTPServerPort).Value = 25
+    
+	' You can use integrated Windows Authentication within a Windows Domain/Active Directory, 
+	' if the mailserver supports it
+	' Set cdoSMTPAuthenticate to cdoNTLM. You don't need to supply username/password then
+    config.Fields(cdoSMTPAuthenticate).Value = cdoNTLM
+    
+    config.Fields.Update
+    
+    Set mail.Configuration = config
+    
+    With mail
+        .To = "someone@somewhere.invalid"
+        .From = "me@mycompany.invalid"
+        .Subject = "First email with CDO"
+        .TextBody = "This is the body of the first plain text email with CDO."
+        
+        .AddAttachment "C:\path\to\a\file.dat"
+        
+        .Send
+    End With
+    
+    Set config = Nothing
+    Set mail = Nothing
+    
+End Sub
+
+
