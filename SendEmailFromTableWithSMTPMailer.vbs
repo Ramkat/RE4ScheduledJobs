@@ -19,7 +19,6 @@ Dim blnLogging
 blnDebug = True '###
 blnLogging = True
 
-'###
 Call LogError2File("0", "Script started @ " & Now())
 
 Call Main
@@ -42,8 +41,7 @@ Sub Main
 	Dim strSenderAddress
 	Dim strRecipientName
 	Dim strRecipientAddress
-	Dim strBody
-	Dim intPrecedence
+	Dim strBody	
 	Dim blnIsHTML
 
 	'SMTP fields
@@ -63,7 +61,7 @@ Sub Main
 	Call LogError2File("0", "Calling GetEmails()")
 	
 	Call GetEmails		
-	'1st array fields:
+	'1st array's fields:
 	'(  
 	' EmailID bigint,  
 	' WebsiteID int,
@@ -72,12 +70,11 @@ Sub Main
 	' SenderAddress varchar(70),  
 	' RecipientName varchar(70),  
 	' RecipientAddress varchar(70),  
-	' Body text, - 7500 chars
-	' Precedence tinyint,  
 	' PlainTextEmail tinyint  
+	' Body text, - 7500 chars	
 	')  	
 	
-	'2nd array fields:
+	'2nd array's fields:
 	'(  
 	' WebsiteID
 	' SMTPServer
@@ -95,7 +92,7 @@ Sub Main
 			If blnSMTPMailerIncluded = False Then	
 				Call LogError2File("0", "Include clsSMTPMailer using ExecuteGlobal")
 				
-				'Include the contents of clsSMTPMailer.cls into this file and us it as if it is native code.
+				'Include the contents of clsSMTPMailer.cls into this file and use it as if it is native code.
 				On Error Resume Next
 				Err.Clear
 				ExecuteGlobal CreateObject("Scripting.FileSystemObject").OpenTextFile(".\clsSMTPMailer.vbs", 1).ReadAll
@@ -128,11 +125,10 @@ Sub Main
 			strSenderAddress = LCase(arrEmails(4, intLoop))
 			strRecipientName = Trim(arrEmails(5, intLoop))
 			strRecipientAddress = arrEmails(6, intLoop)
-			'strBody = arrEmails(7, intLoop)  Not assigned. It is up to 8000 characters. Let's save memory!
-			intPrecedence = arrEmails(8, intLoop)
+			'strBody = arrEmails(8, intLoop)  Not assigned. It is up to 8000 characters. Let's save memory!			
 			
 			blnIsHTML = True
-			If arrEmails(9, intLoop) = 1 Then blnIsHTML = False
+			If arrEmails(7, intLoop) = 1 Then blnIsHTML = False
 					
 			'If the recipient address isn't empty...
 			If Len(strRecipientAddress) > 0 Then 	
@@ -162,10 +158,18 @@ Sub Main
 						strReplyTo = strSenderAddress			
 					End If
 					
+					On Error Resume Next
+					Err.Clear
+					
 					'Send the email using the SMTPMailer Class
 					Call objSMTPMailer.SendSMTPMail ".\Emails\" & intEmailID, strServer, intPort, blnUseSecure, blnIsHTML, strUsername, strPassword, _
-					  strSenderAddress, strSenderName, strReplyTo, strRecipientAddress, "", "", strSubject, arrEmails(7, intLoop), _
+					  strSenderAddress, strSenderName, strReplyTo, strRecipientAddress, "", "", strSubject, arrEmails(8, intLoop), _
 					  strOutput, strReturnVal
+					  
+					If Err.Number > 0 Then
+						LogError2File(intEmailID, "Error calling objSMTPMailer.SendSMTPMail: " & Err.Description)
+						strReturnVal = 9
+					End If
 					  
 					If strReturnVal = 0 Then
 						'Success
@@ -175,15 +179,15 @@ Sub Main
 						strResult5 = strResult5 & "," & intEmailID
 					Else
 						'Other/unknown
-						strResult9 = strResult95 & "," & intEmailID
-					End If
-					
+						strResult9 = strResult9 & "," & intEmailID
+					End If					
 				Else
 					'Since it was a dummy email, flag it as successful.
 					strResult1 = strResult1 & "," & intEmailID
 				End If																
 			Else
-				strResult4 = strResult4 & "," & intEmailID
+				'Other/unknown
+				strResult9 = strResult9 & "," & intEmailID
 			End If
 		Next
 		
