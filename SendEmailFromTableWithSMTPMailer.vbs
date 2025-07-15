@@ -2,6 +2,18 @@
 'Created by  : Christo Pretorius on 8 July 2025
 'Description : This script is used to send email from the Email table on the SQL server.
 
+Option Explicit
+
+'####
+'To update for LIVE server:
+'
+'OpenADOConnection -> connection String
+'Replace C:\\Webs\\secure.re4.co.za\\   with C:\\Webs\\RE4\\secure.re4.co.za\\
+'Replace C:\Webs\ScheduledJobs\  with  D:\ScheduledJobs\
+'Comment out lines that contain '### DELETE
+'Ensure blnDebug = False
+'Ensure blnLogging = False
+
 Dim blnGetEmails
 Dim intEmails
 Dim intSMTPMailers
@@ -10,29 +22,37 @@ Dim arrEmails
 Dim arrSMTPInfo
 Dim arrSMTP
 Dim ADOCn
+Dim ADORs
 Dim strSQL
 Dim strErrMsg
 Dim objIEDebugWindow
 Dim blnDebug
 Dim blnLogging
 
-blnDebug = True '###
-blnLogging = True
+'EmailIDs for different EmailResultIDs
+Dim strResult1
+Dim strResult5
+Dim strResult9
+
+blnDebug = False '###
+blnLogging = False
 
 Call LogError2File("0", "Script started @ " & Now())
 
 Call Main
 
 Call LogError2File("0", "Script ended @ " & Now())
-Call LogError2File("0", "= = = = = = = = = = = = = = = =")
+Call LogError2File("0", "= = = = = = = = = = = = = = = =" & vbcrlf)
 
 wscript.quit 0 'Quit with success
 
-Sub Main	
-	Dim blnSMTPMailerIncluded
+Sub Main		
 	Dim objSMTPMailer
 	Dim strOutput
 	Dim strReturnVal
+	Dim blnHaveDefSMTPDetails
+	Dim blnCanSend
+	Dim intIndex
 	
 	'Email values
 	Dim intEmailID
@@ -51,12 +71,40 @@ Sub Main
 	Dim strUsername
 	Dim strPassword
 	Dim blnUseSecure
-	Dim strReplyTo
+	Dim strReplyTo	
 	
-	'Email errors
-	Dim strResult1
-	Dim strResult5
-	Dim strResult9
+	'Try to include the SMTPMailer's wrapper class into this script.
+	Call LogError2File("0", "Include clsSMTPMailer using ExecuteGlobal")
+					
+	On Error Resume Next
+	Err.Clear
+	
+	'Include the contents of file clsSMTPMailer.vbs into this one.
+	ExecuteGlobal CreateObject("Scripting.FileSystemObject").OpenTextFile("C:\\Webs\\secure.re4.co.za\\SecureRE4Scripts\\SMTPMailer\\clsSMTPMailer.vbs", 1).ReadAll		
+	
+	If Err.Number <> 0 Then
+		Call LogError2File("0", "Including file clsSMTPMailer.vbs failed. Err message: " & Err.Description)		
+		Exit Sub
+	End If
+					
+	'Create an instance of the class
+	Err.Clear
+	Set objSMTPMailer = New clsSMTPMailer
+	
+	If Err.Number <> 0 Then
+		Call LogError2File("0", "Create instance of clsSMTPMailer failed. Err message: " & Err.Description)		
+		Exit Sub
+	End If
+	
+	Call LogError2File("0", "clsSMTPMailer included and initialised.")
+	
+	'Get the default SMTP details.
+	ExecuteGlobal CreateObject("Scripting.FileSystemObject").OpenTextFile("C:\\Webs\\secure.re4.co.za\\SecureRE4Scripts\\SMTPMailer\\SMTPDefaults.vbs", 1).ReadAll	
+		
+	'If no error occurred and we have SMTP details...
+	If Err.Number = 0 And conSMTPServer <> "" And conSMTPPort <> "" Then
+		blnHaveDefSMTPDetails = True
+	End If
 	
 	Call LogError2File("0", "Calling GetEmails()")
 	
@@ -87,45 +135,18 @@ Sub Main
 		
 	Do While blnGetEmails											
 		'Loop through the email array.	
-		For intLoop = 0 To intEmails	
-		
-			If blnSMTPMailerIncluded = False Then	
-				Call LogError2File("0", "Include clsSMTPMailer using ExecuteGlobal")
-				
-				'Include the contents of clsSMTPMailer.cls into this file and use it as if it is native code.
-				On Error Resume Next
-				Err.Clear
-				ExecuteGlobal CreateObject("Scripting.FileSystemObject").OpenTextFile(".\clsSMTPMailer.vbs", 1).ReadAll
-				blnSMTPMailerIncluded = True
-				
-				If Err.Number <> 0 Then
-					Call LogError2File("0", "Including clsSMTPMailer.vbs failed. Err message: " & Err.Description)
-					Call ResetAllEmails
-					Exit Sub
-				End If
-								
-				'Create an instance of the class
-				Err.Clear
-				Set objSMTPMailer = New clsSMTPMailer
-				
-				If Err.Number <> 0 Then
-					Call LogError2File("0", "Create instance of clsSMTPMailer failed. Err message: " & Err.Description)
-					Call ResetAllEmails
-					Exit Sub
-				End If
-				
-				Call LogError2File("0", "clsSMTPMailer included and initialised.")
-			End If
-					
-			'Assign the email fields
-			intEmailID = arrEmails(0 intLoop)
+		For intLoop = 0 To intEmails								
+			blnCanSend = False
+			
+			'Assign the email fields.
+			intEmailID = arrEmails(0, intLoop)
 			intWebsiteID = arrEmails(1, intLoop)
 			strSubject = arrEmails(2, intLoop)
 			strSenderName = arrEmails(3, intLoop)
 			strSenderAddress = LCase(arrEmails(4, intLoop))
 			strRecipientName = Trim(arrEmails(5, intLoop))
 			strRecipientAddress = arrEmails(6, intLoop)
-			'strBody = arrEmails(8, intLoop)  Not assigned. It is up to 8000 characters. Let's save memory!			
+			'strBody = arrEmails(8, intLoop)  Not assigned. It is up to 8000 characters. Let's save memory! Read direct from the array.
 			
 			blnIsHTML = True
 			If arrEmails(7, intLoop) = 1 Then blnIsHTML = False
@@ -136,51 +157,62 @@ Sub Main
 				'If it is not a dummy email...
 				If strSenderAddress <> "dummy@dummy.dummy" Then
 				
-					'Find the sender's SMTP details
+					'Find the sender's SMTP details.
 					intIndex = GetSMTPMailerIndex(intWebsiteID)
 					
 					If intIndex > -1 Then
-						'Assign the SMTP fields
+						'Assign the SMTP fields.
 						strServer = arrSMTPInfo(1, intIndex)
 						intPort = arrSMTPInfo(2, intIndex)
 						strUsername = arrSMTPInfo(3, intIndex)
 						strPassword = arrSMTPInfo(4, intIndex)
 						blnUseSecure = arrSMTPInfo(5, intIndex)
-						strReplyTo = arrSMTPInfo(6, intIndex)											
-					Else
-						'Send using postmaster@re4.co.za and local email server
-						strServer = "196.22.138.229"
-						intPort = 225
-						strUsername = ""
-						strPassword = ""
-						blnUseSecure = False
-						strSenderAddress = "postmaster@re4.co.za"
-						strReplyTo = strSenderAddress			
+						strReplyTo = arrSMTPInfo(6, intIndex)
+						blnCanSend = True
+						
+					ElseIf blnHaveDefSMTPDetails Then
+						'Send using the default SMTP details.
+						strServer = conSMTPServer
+						intPort = conSMTPPort
+						strUsername = conSMTPUser
+						strPassword = conSMTPPassword
+						blnUseSecure = conSMTPSecure
+						strSenderAddress = conSenderAddress
+						strReplyTo = conSenderAddress
+						blnCanSend = True
 					End If
 					
-					On Error Resume Next
-					Err.Clear
-					
-					'Send the email using the SMTPMailer Class
-					Call objSMTPMailer.SendSMTPMail ".\Emails\" & intEmailID, strServer, intPort, blnUseSecure, blnIsHTML, strUsername, strPassword, _
-					  strSenderAddress, strSenderName, strReplyTo, strRecipientAddress, "", "", strSubject, arrEmails(8, intLoop), _
-					  strOutput, strReturnVal
-					  
-					If Err.Number > 0 Then
-						LogError2File(intEmailID, "Error calling objSMTPMailer.SendSMTPMail: " & Err.Description)
-						strReturnVal = 9
-					End If
-					  
-					If strReturnVal = 0 Then
-						'Success
-						strResult1 = strResult1 & "," & intEmailID
-					ElseIf strReturnVal = 1 Then
-						'SMTP error
-						strResult5 = strResult5 & "," & intEmailID
+					If blnCanSend Then
+						On Error Resume Next
+						Err.Clear
+						
+						'Send the email using the SMTPMailer Class.
+						objSMTPMailer.SendSMTPMail "C:\Webs\secure.re4.co.za\SecureRE4Scripts\SMTPMailer\Emails\" & intEmailID, strServer, intPort, blnUseSecure, blnIsHTML, strUsername, strPassword, _
+						  strSenderAddress, strSenderName, strReplyTo, strRecipientAddress, "", "", strSubject, blnLogging, arrEmails(8, intLoop), _
+						  strOutput, strReturnVal
+						  
+						If Err.Number > 0 Then
+							Call LogError2File(intEmailID, "Error calling objSMTPMailer.SendSMTPMail: " & Err.Description)
+							strReturnVal = 9
+						End If
+						
+						Call LogError2File(intEmailID, "Email sent") '###
+						 
+						If strReturnVal = 0 Then
+							'Success
+							strResult1 = strResult1 & "," & intEmailID
+						ElseIf strReturnVal = 1 Then
+							'SMTP error
+							strResult5 = strResult5 & "," & intEmailID
+						Else
+							'Other/unknown
+							strResult9 = strResult9 & "," & intEmailID
+						End If					
 					Else
+						'We do not have SMTP details.
 						'Other/unknown
 						strResult9 = strResult9 & "," & intEmailID
-					End If					
+					End If
 				Else
 					'Since it was a dummy email, flag it as successful.
 					strResult1 = strResult1 & "," & intEmailID
@@ -213,19 +245,26 @@ Sub GetEmails
 	Set ADOCn = OpenADOConnection
 
 	'Check if the connection opened successfully.
-	If Err.number <> 0 Then
-		On Error Goto 0
+	If Err.number <> 0 Then		
+		Call LogError2File("0", "OpenADOConnection didn't execute in GetEmails()" & vbcrlf & Err.Description)
+		Call LogError2File("0", GetSQLError())
 		Exit Sub
 	End If
 	
+	'Call LogError2File("0", "ADOConnection opened...") '### Comment out!
+	
 	Err.Clear 
-	Set ADORs = OpenADORsReadOnly(ADOCn, strSQL, True)
+	Set ADORs = OpenADORsReadOnly(ADOCn, strSQL, False)
 	
 	If Err.number <> 0 Then
+		Call LogError2File("0", "OpenADORsReadOnly didn't execute in GetEmails()" & vbcrlf & Err.Description)
+		Call LogError2File("0", GetSQLError())
 		Set ADORs = Nothing
 		Set ADOCn = Nothing
 		Exit Sub
 	End If
+	
+	'Call LogError2File("0", "ADORs opened...") '### Comment out!
 			
 	If ADORs.RecordCount > 0 Then
 		arrEmails = ADORs.GetRows			'Put the email data in a 2 dimensional array
@@ -233,10 +272,10 @@ Sub GetEmails
 		blnGetEmails = True
 	End If
 	
-	Output intEmails & " emails to process"
+	Output (intEmails + 1) & " emails to process"
 	
 	'###
-	Call LogError2File("0", intEmails & " emails to process")
+	Call LogError2File("0", (intEmails + 1) & " emails to process")
 	
 	'Get the next recordset - it contains the SMTP details.
 	Set ADORs = ADORs.NextRecordset
@@ -279,6 +318,8 @@ Function UpdateResults
 	'Check if the connection opened successfully.
 	If Err.number <> 0 Then
 		On Error Goto 0
+		Call LogError2File("0", "OpenADOConnection didn't execute in UpdateResults()" & vbcrlf & Err.Description)
+		Call LogError2File("0", GetSQLError())
 		Exit Function
 	End If		
 		
@@ -288,17 +329,11 @@ Function UpdateResults
 		strSQL = "exec sp_UpdateEmailResult '" & strResult1 & "', 1 ; "
 	End If
 		
-	If strResult4 <> "" Then
+	If strResult5 <> "" Then
 		'Remove the 1st comma
-		strResult4 = Mid(strResult4, 2)
-		strSQL = strSQL & "exec sp_UpdateEmailResult '" & strResult4 & "', 4 ; "
-	End If
-	
-	If strResult7 <> "" Then
-		'Remove the 1st comma
-		strResult7 = Mid(strResult7, 2)
-		strSQL = strSQL & "exec sp_UpdateEmailResult '" & strResult7 & "', 7 ; "
-	End If
+		strResult5 = Mid(strResult5, 2)
+		strSQL = strSQL & "exec sp_UpdateEmailResult '" & strResult5 & "', 5 ; "
+	End If	
 	
 	If strResult9 <> "" Then
 		'Remove the 1st comma
@@ -312,8 +347,9 @@ Function UpdateResults
 	Err.Clear 	
 	Set ADORs = OpenADORsReadOnly(ADOCn, strSQL, True)
 	
-	If Err.number <> 0 Then
-		Call LogSQLError2File(Err.Description)
+	If Err.number <> 0 Then		
+		Call LogError2File("0", "OpenADORsReadOnly didn't execute in UpdateResults()" & vbcrlf & Err.Description)
+		Call LogError2File("0", GetSQLError())
 		Set ADORs = Nothing
 		Set ADOCn = Nothing
 		On Error Goto 0
@@ -323,53 +359,10 @@ Function UpdateResults
 	On Error Goto 0
 	Set ADORs = Nothing	'Disconnect recordset
 	strResult1 = ""
-	strResult4 = ""
-	strResult7 = ""
+	strResult5 = ""	
 	strResult9 = ""
 	UpdateResults = True
 End Function
-
-Sub ResetAllEmails
-	'This sub will update the retrieved emails statusses back to Unsent.	
-	'This should only be called if no emails could be processed
-	
-	'Open a connection to the database.	
-	On Error Resume Next	
-	Err.Clear
-	Set ADOCn = OpenADOConnection
-		
-	'Check if the connection opened successfully.
-	If Err.number <> 0 Then
-		On Error Goto 0
-		Exit Function
-	End If		
-	
-	strSQL = ""
-	strIDs = ""
-
-	For intLoop = 0 To intEmails
-		strIDs = strIDs & "," & arrEmails(0, intLoop)
-	Next
-	
-	'Remove the 1st comma
-	strIDs = Mid(strIDs, 2)
-	
-	strSQL = "sp_UpdateEmailStatus '" & strIDs & "', 1"
-	
-	If blnDebug Then Output strSQL
-	
-	On Error Resume Next	
-	Err.Clear 	
-	Set ADORs = OpenADORsReadOnly(ADOCn, strSQL, True)
-	
-	If Err.number <> 0 Then
-		Call LogSQLError2File(Err.Description)			
-	End If
-	
-	On Error Goto 0
-	Set ADORs = Nothing	'Disconnect recordset	
-	Set ADOCn = Nothing	'Close the connection
-End Sub
 
 Function OpenADOConnection
 	'This function will open a connection to the database
@@ -381,7 +374,7 @@ Function OpenADOConnection
 	Dim strConnString
 
 	Set ADOCn = CreateObject("ADODB.Connection")
-	strConnString = "Driver={SQL Server Native Client 11.0};pwd=~letzgetem@1l!;uid=EmailUser;database=wlc;Server=127.0.0.1\SQL2017"	
+	strConnString = "Driver={SQL Server Native Client 11.0};pwd=~letzgetem@1l!;uid=EmailUser;database=wlc;Server=WINSRV2025STD\MSSQLSERVER2017"	
 
 	ADOCn.CommandTimeout = 60
 	ADOCn.CursorLocation = 3	'Client-side cursor. DO NOT CHANGE IT !!!
@@ -422,22 +415,20 @@ Sub LogError2File(strEmailID, strErrDesc)
 	
 	'If an error occurs at this stage, ignore it.
 	On Error Resume Next		
-	
+		
 	Dim objFSO	
-	Dim strFileName
+	Dim objFile	
 		
 	Set objFSO = CreateObject("Scripting.FileSystemObject")	
-	Set objFile = objFSO.OpenTextFile("D:\ScheduledJobs\SendEmailFromTableWithSMTPMailer.log.txt", 8, True)
+	Set objFile = objFSO.OpenTextFile("C:\Webs\ScheduledJobs\SendEmailFromTableWithSMTPMailer.log.txt", 8, True) '8 = For appending
 	
 	If strEmailID <> "0" Then
 		objFile.WriteLine "Date : " & Now() 	
 		objFile.WriteLine "EmailID : " & strEmailID
-		objFile.WriteLine "SMTP Error : " & strErrDesc		
+		objFile.WriteLine strErrDesc & vbcrlf
 	Else
 		objFile.WriteLine strErrDesc		
-	End If
-	
-	objFile.WriteLine ""
+	End If	
 	
 	objFile.Close
 	Set objFile = Nothing	
@@ -445,34 +436,11 @@ Sub LogError2File(strEmailID, strErrDesc)
 	On Error Goto 0
 End Sub
 
-Sub LogSQLError2File(strErrDesc)
-	'This function will log the SQL errors to file.
-	
-	If blnLogging = False Then Exit Sub
-	
-	'If an error occurs at this stage, ignore it.
-	On Error Resume Next		
-	
-	Dim objFSO	
-	Dim objFile
-	Dim strFileName
+Function GetSQLError()
+	'This function will return the SQL statement and errors
 		
-	Set objFSO = CreateObject("Scripting.FileSystemObject")	
-	Set objFile = objFSO.OpenTextFile("D:\ScheduledJobs\SendEmailFromTableWithSMTPMailer_SQLErrors.txt", 8, True)
-	
-	objFile.WriteLine "Date : " & Now() 
-	objFile.WriteLine strSQL
-	objFile.WriteLine "SQLError : " & GetSQLErrors(ADOCn)
-	objFile.WriteLine "Err.Description : " & strErrDesc
-	objFile.WriteLine ""
-	objFile.WriteLine "= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = ="
-	objFile.WriteLine ""
-	objFile.Close
-	
-	Set objFile = Nothing	
-	Set objFSO = Nothing
-	On Error Goto 0
-End Sub
+	GetSQLError = "SQL: " & strSQL & vbcrlf & "SQLError: " & GetSQLErrors(ADOCn)	 
+End Function
 
 Function GetSQLErrors(ADOCn)
 	'This function will retrieve the native SQL errors
